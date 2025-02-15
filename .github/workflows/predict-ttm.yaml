@@ -1,35 +1,55 @@
-# We run this workflow on the base ocp-ci-analysis container image which contains dependencies neccesary to run these notebooks 
-name: Predict Time to Merge
-
-# Controls when the workflow will run
+name: predict-ttm.yaml
 on:
-
-  workflow_dispatch:
-  pull_request:
+  push:
+    branches:
+      - master
 
 jobs:
   pipeline:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-latest
-    container: 
+    container:
       image: quay.io/aicoe/ocp-ci-analysis
-
+    runs-on: ubuntu-latest
     steps:
-      - name: Predict Time to Merge
-        uses: redhat-et/time-to-merge-tool@v1
-        env:
-          AWS_ACCESS_KEY_ID: ${{ github.event.client_payload.AWS_ACCESS_KEY_ID  || secrets.AWS_ACCESS_KEY_ID}}
-          GITHUB_REPO: ${{ github.event.client_payload.REPO || secrets.REPO }}
-          GITHUB_ORG: ${{ github.event.client_payload.ORG || secrets.ORG }}
-          S3_ENDPOINT_URL: ${{ github.event.client_payload.S3_ENDPOINT_URL || secrets.S3_ENDPOINT_URL }}
-          S3_BUCKET: ${{ github.event.client_payload.S3_BUCKET || secrets.S3_BUCKET }}
-          AWS_SECRET_ACCESS_KEY: ${{ github.event.client_payload.AWS_SECRET_ACCESS_KEY || secrets.AWS_SECRET_ACCESS_KEY }}
-          CEPH_BUCKET: ${{ github.event.client_payload.S3_BUCKET || secrets.S3_BUCKET }}
-          CEPH_BUCKET_PREFIX: ${{ github.event.client_payload.PREFIX|| secrets.CEPH_BUCKET_PREFIX }}
-          CEPH_KEY_ID: ${{ github.event.client_payload.AWS_ACCESS_KEY_ID  || secrets.AWS_ACCESS_KEY_ID }}
-          CEPH_SECRET_KEY: ${{ github.event.client_payload.AWS_SECRET_ACCESS_KEY || secrets.AWS_SECRET_ACCESS_KEY }}
+      - name: Start Energy Measurement
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          task: start-measurement
+      - env:
+          ACTION: 1
+          AWS_ACCESS_KEY_ID: ${{ github.event.client_payload.AWS_ACCESS_KEY_ID  ||
+            secrets.AWS_ACCESS_KEY_ID}}
+          AWS_SECRET_ACCESS_KEY: ${{ github.event.client_payload.AWS_SECRET_ACCESS_KEY
+            || secrets.AWS_SECRET_ACCESS_KEY }}
+          CEPH_BUCKET: ${{ github.event.client_payload.S3_BUCKET || secrets.S3_BUCKET
+            }}
+          CEPH_BUCKET_PREFIX: ${{ github.event.client_payload.PREFIX|| secrets.CEPH_BUCKET_PREFIX
+            }}
+          CEPH_KEY_ID: ${{ github.event.client_payload.AWS_ACCESS_KEY_ID  || secrets.AWS_ACCESS_KEY_ID
+            }}
+          CEPH_SECRET_KEY: ${{ github.event.client_payload.AWS_SECRET_ACCESS_KEY ||
+            secrets.AWS_SECRET_ACCESS_KEY }}
           GITHUB_ACCESS_TOKEN: ${{  secrets.GITHUB_TOKEN || secrets.ACCESS_TOKEN  }}
-          # Setting mode by default as 0, this will only run inference mode and if defined as 1 will train and run inference.
+          GITHUB_ORG: ${{ github.event.client_payload.ORG || secrets.ORG }}
+          GITHUB_REPO: ${{ github.event.client_payload.REPO || secrets.REPO }}
           MODE: 0
           REMOTE: 1
-          ACTION: 1
+          S3_BUCKET: ${{ github.event.client_payload.S3_BUCKET || secrets.S3_BUCKET
+            }}
+          S3_ENDPOINT_URL: ${{ github.event.client_payload.S3_ENDPOINT_URL || secrets.S3_ENDPOINT_URL
+            }}
+        name: Predict Time to Merge
+        uses: redhat-et/time-to-merge-tool@v1
+      - id: display-measurement
+        name: Display Energy Results
+        uses: green-coding-solutions/eco-ci-energy-estimation@v4
+        with:
+          json-output: true
+          task: display-results
+      - name: Save Total Energy Consumption Data
+        run: echo '${{ steps.final-measurement.outputs.data-total-json }}' > total_energy_consumption.json
+      - name: Upload Energy Consumption Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: total-energy-consumption
+          path: total_energy_consumption.json
